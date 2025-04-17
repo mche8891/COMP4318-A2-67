@@ -171,7 +171,7 @@ def create_mlp_model(input_shape, num_classes, learning_rate=0.001, dropout_rate
         Dropout(dropout_rate),
         Dense(hidden_units // 4, activation='relu'),
         BatchNormalization(),
-        Dropout(dropout_rate * 0.6),
+        Dropout(min(dropout_rate * 0.6, 0.7)),  # 避免dropout率过高
         Dense(num_classes, activation='softmax')
     ])
     
@@ -214,7 +214,7 @@ def create_cnn_model(input_shape, num_classes, learning_rate=0.001, dropout_rate
         Flatten(),
         Dense(256, activation='relu'),
         BatchNormalization(),
-        Dropout(dropout_rate * 2),
+        Dropout(min(dropout_rate * 1.5, 0.8)),  # 确保dropout率不超过0.8
         Dense(num_classes, activation='softmax')
     ])
     
@@ -280,8 +280,17 @@ def create_and_train_rf(X_train, y_train, X_test, y_test, n_estimators=100, max_
     return rf_model, accuracy, report_df, training_time
 
 # Training and evaluation function for neural networks
-def train_and_evaluate(model, X_train, y_train, X_val, y_val, X_test, y_test, model_name, batch_size=64, epochs=30):
+def train_and_evaluate(model, X_train, y_train, X_val, y_val, X_test, y_test, model_name, batch_size=None, epochs=30):
     print(f"\n===== Training {model_name} =====")
+    
+    # 根据可用GPU数量增加批量大小
+    if batch_size is None:
+        gpu_count = len(tf.config.list_physical_devices('GPU'))
+        base_batch_size = 64
+        batch_size = base_batch_size * max(1, min(gpu_count, 4))  # 根据GPU数量调整批量大小，但不超过4倍
+    
+    print(f"Using batch size: {batch_size}")
+    
     start_time = time.time()
     
     # Callbacks for better training
@@ -300,22 +309,22 @@ def train_and_evaluate(model, X_train, y_train, X_val, y_val, X_test, y_test, mo
         min_lr=1e-6
     )
     
-    # Train the model
+    # Train the model with progress bar
     history = model.fit(
         X_train, y_train,
         batch_size=batch_size,
         epochs=epochs,
         validation_data=(X_val, y_val),
         callbacks=[early_stopping, reduce_lr],
-        verbose=2
+        verbose=1  # 显示进度条
     )
     
     training_time = time.time() - start_time
     print(f"Training time: {training_time:.2f} seconds")
     
-    # Evaluate on test set
+    # Evaluate on test set with progress bar
     print(f"\n===== Evaluating {model_name} =====")
-    test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
+    test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=1)  # 显示评估进度条
     print(f"Test accuracy: {test_accuracy:.4f}")
     
     # Plot training history
@@ -342,7 +351,7 @@ def train_and_evaluate(model, X_train, y_train, X_val, y_val, X_test, y_test, mo
     plt.close()
     
     # Get predictions and create confusion matrix
-    y_pred = model.predict(X_test)
+    y_pred = model.predict(X_test, verbose=1)  # 添加预测进度条
     y_pred_classes = np.argmax(y_pred, axis=1)
     y_true_classes = np.argmax(y_test, axis=1)
     
@@ -387,15 +396,15 @@ def tune_random_forest(X_train, y_train, X_val, y_val):
     }
     
     # Create a base model
-    rf = RandomForestClassifier(random_state=42, n_jobs=-1)
+    rf = RandomForestClassifier(random_state=42, n_jobs=-1)  # 使用所有核心
     
     # Instantiate the grid search model
     grid_search = GridSearchCV(
         estimator=rf, 
         param_grid=param_grid,
         cv=3,
-        n_jobs=-1,
-        verbose=2,
+        n_jobs=-1,  # 使用所有核心
+        verbose=2,  # 增加详细程度
         scoring='accuracy'
     )
     
@@ -459,11 +468,16 @@ def tune_random_forest(X_train, y_train, X_val, y_val):
 def tune_mlp(X_train, y_train, X_val, y_val, input_shape, num_classes):
     print("\n===== Hyperparameter Tuning for MLP =====")
     
+    # 增加GPU存在时的批量大小
+    gpu_count = len(tf.config.list_physical_devices('GPU'))
+    base_batch_size = 64
+    batch_size = base_batch_size * max(1, min(gpu_count, 4))  # 根据GPU数量调整批量大小，但不超过4倍
+    print(f"Using batch size: {batch_size} (detected {gpu_count} GPUs)")
+    
     # Define hyperparameter combinations to try
     learning_rates = [0.01, 0.001, 0.0001]
     dropout_rates = [0.3, 0.5, 0.7]
     hidden_units = [128, 256, 512]
-    batch_sizes = [32, 64, 128]
     
     # Track results
     results = []
@@ -506,18 +520,18 @@ def tune_mlp(X_train, y_train, X_val, y_val, input_shape, num_classes):
                     restore_best_weights=True
                 )
                 
-                # Use batch size 64 for all tuning to reduce variables
+                # Use adjusted batch size
                 history = model.fit(
                     X_train, y_train,
-                    batch_size=64,
+                    batch_size=batch_size,
                     epochs=10,  # Limit epochs for tuning
                     validation_data=(X_val, y_val),
                     callbacks=[early_stopping],
-                    verbose=0
+                    verbose=1  # 显示进度条
                 )
                 
                 # Evaluate
-                val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
+                val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=1)  # 显示验证评估进度条
                 print(f"Validation accuracy: {val_accuracy:.4f}")
                 
                 # Track results
@@ -592,6 +606,12 @@ def tune_mlp(X_train, y_train, X_val, y_val, input_shape, num_classes):
 def tune_cnn(X_train, y_train, X_val, y_val, input_shape, num_classes):
     print("\n===== Hyperparameter Tuning for CNN =====")
     
+    # 增加GPU存在时的批量大小
+    gpu_count = len(tf.config.list_physical_devices('GPU'))
+    base_batch_size = 64
+    batch_size = base_batch_size * max(1, min(gpu_count, 4))  # 根据GPU数量调整批量大小，但不超过4倍
+    print(f"Using batch size: {batch_size} (detected {gpu_count} GPUs)")
+    
     # Define hyperparameter combinations to try
     learning_rates = [0.01, 0.001, 0.0001]
     dropout_rates = [0.25, 0.4, 0.5]
@@ -631,7 +651,7 @@ def tune_cnn(X_train, y_train, X_val, y_val, input_shape, num_classes):
                     Flatten(),
                     Dense(128, activation='relu'),
                     BatchNormalization(),
-                    Dropout(dropout * 2),
+                    Dropout(min(dropout * 1.5, 0.8)),  # 确保dropout率不超过0.8
                     Dense(num_classes, activation='softmax')
                 ])
                 
@@ -650,15 +670,15 @@ def tune_cnn(X_train, y_train, X_val, y_val, input_shape, num_classes):
                 
                 history = model.fit(
                     X_train, y_train,
-                    batch_size=64,  # Fixed batch size for tuning
+                    batch_size=batch_size,  # 使用根据GPU数量调整的批量大小
                     epochs=10,  # Reduced for tuning
                     validation_data=(X_val, y_val),
                     callbacks=[early_stopping],
-                    verbose=0
+                    verbose=1  # 显示进度条
                 )
                 
                 # Evaluate
-                val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
+                val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=1)  # 显示验证评估进度条
                 print(f"Validation accuracy: {val_accuracy:.4f}")
                 
                 results.append({
@@ -761,6 +781,23 @@ def compare_models(model_results):
 
 # Main function
 def main():
+    # 检测并显示可用GPU
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        print(f"Available GPUs: {len(gpus)}")
+        for gpu in gpus:
+            print(f" - {gpu.name}")
+        
+        # 设置GPU内存增长
+        for gpu in gpus:
+            try:
+                tf.config.experimental.set_memory_growth(gpu, True)
+                print(f"Memory growth enabled for {gpu.name}")
+            except:
+                print(f"Memory growth setting failed for {gpu.name}")
+    else:
+        print("No GPUs detected, using CPU")
+    
     # Load data
     X_train, y_train, X_test, y_test = load_data()
     
@@ -783,60 +820,60 @@ def main():
     # Results tracker
     model_results = []
     
-    # ------- RANDOM FOREST -------
-    if do_hyperparameter_tuning:
-        print("\nTuning Random Forest hyperparameters...")
-        rf_best_params = tune_random_forest(X_train_rf, y_train_rf, X_val_rf, y_val_rf)
-        rf_model, rf_accuracy, rf_report, rf_time = create_and_train_rf(
-            X_train_rf, y_train_rf, X_test_rf, y_test_rf,
-            n_estimators=rf_best_params['n_estimators'],
-            max_depth=rf_best_params['max_depth'],
-            min_samples_split=rf_best_params['min_samples_split']
-        )
-    else:
-        # Create and train with default parameters
-        rf_model, rf_accuracy, rf_report, rf_time = create_and_train_rf(
-            X_train_rf, y_train_rf, X_test_rf, y_test_rf
-        )
+    # # ------- RANDOM FOREST -------
+    # if do_hyperparameter_tuning:
+    #     print("\nTuning Random Forest hyperparameters...")
+    #     rf_best_params = tune_random_forest(X_train_rf, y_train_rf, X_val_rf, y_val_rf)
+    #     rf_model, rf_accuracy, rf_report, rf_time = create_and_train_rf(
+    #         X_train_rf, y_train_rf, X_test_rf, y_test_rf,
+    #         n_estimators=rf_best_params['n_estimators'],
+    #         max_depth=rf_best_params['max_depth'],
+    #         min_samples_split=rf_best_params['min_samples_split']
+    #     )
+    # else:
+    #     # Create and train with default parameters
+    #     rf_model, rf_accuracy, rf_report, rf_time = create_and_train_rf(
+    #         X_train_rf, y_train_rf, X_test_rf, y_test_rf
+    #     )
     
-    model_results.append({
-        'model': 'Random Forest',
-        'accuracy': rf_accuracy,
-        'training_time': rf_time
-    })
+    # model_results.append({
+    #     'model': 'Random Forest',
+    #     'accuracy': rf_accuracy,
+    #     'training_time': rf_time
+    # })
     
     # ------- MLP MODEL -------
-    if do_hyperparameter_tuning:
-        print("\nTuning MLP hyperparameters...")
-        mlp_best_params = tune_mlp(X_train_nn, y_train_nn, X_val_nn, y_val_nn, input_shape, num_classes)
-        mlp_model = create_mlp_model(
-            input_shape, 
-            num_classes,
-            learning_rate=mlp_best_params['learning_rate'],
-            dropout_rate=mlp_best_params['dropout_rate'],
-            hidden_units=mlp_best_params['hidden_units']
-        )
-    else:
-        # Create with default parameters
-        mlp_model = create_mlp_model(input_shape, num_classes)
+    # if do_hyperparameter_tuning:
+    #     print("\nTuning MLP hyperparameters...")
+    #     mlp_best_params = tune_mlp(X_train_nn, y_train_nn, X_val_nn, y_val_nn, input_shape, num_classes)
+    #     mlp_model = create_mlp_model(
+    #         input_shape, 
+    #         num_classes,
+    #         learning_rate=mlp_best_params['learning_rate'],
+    #         dropout_rate=mlp_best_params['dropout_rate'],
+    #         hidden_units=mlp_best_params['hidden_units']
+    #     )
+    # else:
+    #     # Create with default parameters
+    #     mlp_model = create_mlp_model(input_shape, num_classes)
     
-    # Train and evaluate MLP
-    mlp_accuracy, mlp_report, mlp_time, mlp_history = train_and_evaluate(
-        mlp_model, 
-        X_train_nn, 
-        y_train_nn, 
-        X_val_nn, 
-        y_val_nn, 
-        X_test_nn, 
-        y_test_nn, 
-        'MLP'
-    )
+    # # Train and evaluate MLP
+    # mlp_accuracy, mlp_report, mlp_time, mlp_history = train_and_evaluate(
+    #     mlp_model, 
+    #     X_train_nn, 
+    #     y_train_nn, 
+    #     X_val_nn, 
+    #     y_val_nn, 
+    #     X_test_nn, 
+    #     y_test_nn, 
+    #     'MLP'
+    # )
     
-    model_results.append({
-        'model': 'MLP',
-        'accuracy': mlp_accuracy,
-        'training_time': mlp_time
-    })
+    # model_results.append({
+    #     'model': 'MLP',
+    #     'accuracy': mlp_accuracy,
+    #     'training_time': mlp_time
+    # })
     
     # ------- CNN MODEL -------
     if do_hyperparameter_tuning:
