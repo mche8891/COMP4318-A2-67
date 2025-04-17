@@ -843,75 +843,75 @@ def main():
     # })
     
     # ------- MLP MODEL -------
-    # if do_hyperparameter_tuning:
-    #     print("\nTuning MLP hyperparameters...")
-    #     mlp_best_params = tune_mlp(X_train_nn, y_train_nn, X_val_nn, y_val_nn, input_shape, num_classes)
-    #     mlp_model = create_mlp_model(
-    #         input_shape, 
-    #         num_classes,
-    #         learning_rate=mlp_best_params['learning_rate'],
-    #         dropout_rate=mlp_best_params['dropout_rate'],
-    #         hidden_units=mlp_best_params['hidden_units']
-    #     )
-    # else:
-    #     # Create with default parameters
-    #     mlp_model = create_mlp_model(input_shape, num_classes)
-    
-    # # Train and evaluate MLP
-    # mlp_accuracy, mlp_report, mlp_time, mlp_history = train_and_evaluate(
-    #     mlp_model, 
-    #     X_train_nn, 
-    #     y_train_nn, 
-    #     X_val_nn, 
-    #     y_val_nn, 
-    #     X_test_nn, 
-    #     y_test_nn, 
-    #     'MLP'
-    # )
-    
-    # model_results.append({
-    #     'model': 'MLP',
-    #     'accuracy': mlp_accuracy,
-    #     'training_time': mlp_time
-    # })
-    
-    # ------- CNN MODEL -------
     if do_hyperparameter_tuning:
-        print("\nTuning CNN hyperparameters...")
-        cnn_best_params = tune_cnn(X_train_nn, y_train_nn, X_val_nn, y_val_nn, input_shape, num_classes)
-        cnn_model = create_cnn_model(
-            input_shape,
+        print("\nTuning MLP hyperparameters...")
+        mlp_best_params = tune_mlp(X_train_nn, y_train_nn, X_val_nn, y_val_nn, input_shape, num_classes)
+        mlp_model = create_mlp_model(
+            input_shape, 
             num_classes,
-            learning_rate=cnn_best_params['learning_rate'],
-            dropout_rate=cnn_best_params['dropout_rate'],
-            filters=cnn_best_params['filters']
+            learning_rate=mlp_best_params['learning_rate'],
+            dropout_rate=mlp_best_params['dropout_rate'],
+            hidden_units=mlp_best_params['hidden_units']
         )
     else:
         # Create with default parameters
-        cnn_model = create_cnn_model(input_shape, num_classes)
+        mlp_model = create_mlp_model(input_shape, num_classes)
     
-    # Train and evaluate CNN
-    cnn_accuracy, cnn_report, cnn_time, cnn_history = train_and_evaluate(
-        cnn_model, 
+    # Train and evaluate MLP
+    mlp_accuracy, mlp_report, mlp_time, mlp_history = train_and_evaluate(
+        mlp_model, 
         X_train_nn, 
         y_train_nn, 
         X_val_nn, 
         y_val_nn, 
         X_test_nn, 
         y_test_nn, 
-        'CNN'
+        'MLP'
     )
     
     model_results.append({
-        'model': 'CNN',
-        'accuracy': cnn_accuracy,
-        'training_time': cnn_time
+        'model': 'MLP',
+        'accuracy': mlp_accuracy,
+        'training_time': mlp_time
     })
     
-    # Compare all models
-    comparison_df = compare_models(model_results)
+    # ------- CNN MODEL -------
+    # if do_hyperparameter_tuning:
+    #     print("\nTuning CNN hyperparameters...")
+    #     cnn_best_params = tune_cnn(X_train_nn, y_train_nn, X_val_nn, y_val_nn, input_shape, num_classes)
+    #     cnn_model = create_cnn_model(
+    #         input_shape,
+    #         num_classes,
+    #         learning_rate=cnn_best_params['learning_rate'],
+    #         dropout_rate=cnn_best_params['dropout_rate'],
+    #         filters=cnn_best_params['filters']
+    #     )
+    # else:
+    #     # Create with default parameters
+    #     cnn_model = create_cnn_model(input_shape, num_classes)
     
-    print("\nTask completed. Check the saved images for visualizations.")
+    # # Train and evaluate CNN
+    # cnn_accuracy, cnn_report, cnn_time, cnn_history = train_and_evaluate(
+    #     cnn_model, 
+    #     X_train_nn, 
+    #     y_train_nn, 
+    #     X_val_nn, 
+    #     y_val_nn, 
+    #     X_test_nn, 
+    #     y_test_nn, 
+    #     'CNN'
+    # )
+    
+    # model_results.append({
+    #     'model': 'CNN',
+    #     'accuracy': cnn_accuracy,
+    #     'training_time': cnn_time
+    # })
+    
+    # # Compare all models
+    # comparison_df = compare_models(model_results)
+    
+    # print("\nTask completed. Check the saved images for visualizations.")
 
 if __name__ == "__main__":
     main() 
